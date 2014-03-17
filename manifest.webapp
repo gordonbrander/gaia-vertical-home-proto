@@ -1,0 +1,11 @@
+{
+    "name": "P/Z Home",
+    "description": "Pinch/Zoom home prototype",
+    "developer": {
+      "name": "Gordon Brander",
+      "url": "https://github.com/gordonbrander/"
+    },
+    "launch_path": "/",
+    "fullscreen": "true",
+    "orientation": ["portrait"]
+}

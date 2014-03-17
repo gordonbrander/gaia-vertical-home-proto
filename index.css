@@ -1,0 +1,61 @@
+html {
+  background: #000;
+  font-family: "Fira Sans OT", "Fira Sans", "Feura Sans", sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+}
+
+img {
+  vertical-align: middle;
+}
+
+.sys-stage {
+  height: 480px;
+  position: relative;
+  width: 320px;
+}
+
+.sys-screen {
+  height: 100%;
+  overflow: hidden;
+  position: absolute;
+  width: 100%;
+}
+
+/* Home .home-
+----------------------------------------------------------------------------- */
+
+.home {
+  background-size: cover;
+  overflow: auto;
+}
+
+.home-strip {
+  margin: 0 auto;
+  overflow: hidden;
+  padding: 40px 0 45px;
+  width: 300px;
+}
+
+.app {
+  color: rgba(255, 255, 255, .7);
+  font-size: 12px;
+  position: absolute;
+  transition:
+    transform 500ms cubic-bezier(0.215, 0.610, 0.355, 1.000),
+    width 500ms cubic-bezier(0.215, 0.610, 0.355, 1.000);
+
+  width: 100px;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.app > img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+}
