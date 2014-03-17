@@ -17,53 +17,58 @@
 
 // [{ weight: 200.2, value: 'foo' }]
 
-// Access index in an indexed value using the repeat-last-item rule.
-// This makes it easy to zip 2 different-sized arrays together, for example.
+// Access a value at index `i`.
 function at(indexed, i) {
-  // If item is not indexed, treat value as itself.
+  // If `indexed` is a value, not an indexed object, return value itself.
   if (indexed == null || indexed.length == null) return indexed;
   // If i is within range, treat this as standard property access.
   else if (i < indexed.length) return indexed[i];
-  // Otherwise, use the "repeat last item" rule.
+  // If `i` is greater than length, use the "repeat last item" rule.
+  // This makes it easy to zip 2 items of different length, for example.
   else return indexed[len - 1];
 }
 
 // Fold a value by zipping `a` and `b`, where:
-// `a` is any indexed object.  
-// `b` is any indexed object or any other value.
+// `a` is an indexed object.  
+// `b` is an indexed object or any other value.
 function cofold(a, b, step, folded) {
+  // We use `a` as the driver for iteration.
   for (var i = 0, length = a.length; i < length; i++)
-    folded = step(folded, at(a, i), at(b, i), i);
+    // Note that since `b` is accessed via `at()`, it can be a plain value.
+    folded = step(folded, a[i], at(b, i), i);
   return folded;
 }
 
-function append(indexed, item) {
-  var length = indexed.length;
-  indexed.length = length + 1;
-  indexed[length] = item;
-  return indexed;
+// Assign a new `item` to vector `v` at index `i`.
+// Mutates and returns vector `v`.
+function assignV(v, i, item) {
+  // Assign item to property.
+  v[i] = item;
+  // If length is not properly handled by this datatype, update it manually.
+  if (!v.length || i >= v.length) v.length = i + 1;
+  return v;
 }
 
-function appendSub(into, n0, n1) {
-  return append(into, n0 - n1);
+function assignSub(into, n0, n1, i) {
+  return assignV(into, i, n0 - n1);
 }
 
-// Subtract v2 from v1, returning a vector.
-function subV(v0, v1, into) {
-  return cofold(v0, v1, appendSub, into || []);
+// Subtract v1 from v0, returning mutated vector `into`.
+function subV(into, v0, v1) {
+  return cofold(v0, v1, assignSub, into);
 }
 
-function appendMult(into, n0, n1) {
-  return append(into, n0 * n1);
+function assignMult(into, n0, n1, i) {
+  return assignV(into, i, n0 * n1);
 }
 
-function multV(v0, v1, into) {
-  // Multiply a vector by another vector.
-  return cofold(v0, v1, appendMult, into || []);
+// Multiply `v0` by `v1`, returning mutated vector `into`.
+function multV(into, v0, v1) {
+  return cofold(v0, v1, assignMult, into);
 }
 
-function tweenV(from, to, factor, into) {
-  return multV(subV(to, from, into), factor, into);
+function tweenV(into, from, to, factor) {
+  return multV(into, subV(into, to, from), factor);
 }
 
 // Find the column this item belongs to.
@@ -76,14 +81,21 @@ function calcGridRow(i, cols) {
   return Math.floor(i / cols);
 }
 
+function calGridLeft(i, cols, w) {
+  return calcGridCol(i, cols) * w;
+}
+
+function calcGridTop(i, cols, h) {
+  return calcGridRow(i, cols) * h;
+}
+
 function makeUnitStats(i, w, h, grid, cols) {
   var colW = gridW / cols;
-  var adjustmentLeft = ((colW - w) / 2);
   return [
     w,
     h,
-    (calcGridCol(i, cols) * w) + adjustmentLeft,
-    (calcGridRow(i, cols) * h)
+    calcGridLeft(i, cols, w) + ((colW - w) / 2),
+    calcGridTop(i, cols, h)
   ];
 }
 
@@ -115,27 +127,50 @@ function foldIntoGrid_(element, i, w, h, gridW, cols) {
   return i + 1;
 }
 
-function placeEachInGrid(elements, w, h, gridW, cols) {
+function layoutEachInGrid(elements, w, h, gridW, cols) {
   fold4(elements, foldIntoGrid_, 0, w, h, gridW, cols);
   return elements;
 }
 
-function setupGrid(gridEl, unitEls, w, h, cols) {
-  var gridW = gridEl.innerWidth;
-  var gridH = (calcGridRow(i, cols) * h)
-  fold4(elements, foldIntoGrid_, 0, w, h, gridW, cols);  
+// Significant dimensions:
+// 
+// Column width
+// Unit width
+// Unit height
+// Number of columns
+// Grid width
+// 
+// The most useful driving dimensions are:
+// 
+// Grid width
+// Number of columns
+// Unit height
+
+function layoutGrid(gridEl, gridW, unitH, cols) {
+  // Any child of `gridEl` is treated as the element to be layed out, for now.
+  var unitEls = gridEl.children;
+
+  // Calc desired static height of grid.
+  var gridH = calcGridTop(unitEls.length - 1, cols, unitH) + unitH;
+
+  // Set dimensions of `gridEl`.
+  gridEl.style.width = gridW + 'px';
+  gridEl.style.height = gridH + 'px';
+
+  // Layout children in grid.
+  layoutEachInGrid(unitEls, (gridW / cols), unitH, gridW, cols);
 }
 
 function setupDemo(gridEl, unitEls) {
   var isThreeUp = true;
 
-  placeEachInGrid(unitEls, 100, 120, 300, 3);
+  layoutGrid(gridEl, 300, 120, 3);
 
   gridEl.addEventListener('click', function (event) {
     // Toggle state
     isThreeUp = !isThreeUp;
 
-    if (isThreeUp) placeEachInGrid(unitEls, 100, 120, 300, 3);
-    else placeEachInGrid(unitEls, 75, 100, 300, 4);
+    if (isThreeUp) layoutGrid(gridEl, 300, 120, 3);
+    else layoutGrid(gridEl, 300, 110, 4);
   });
 }
