@@ -108,6 +108,20 @@ function lift3(f, behaveA, behaveB, behaveC) {
   });
 }
 
+// Lift a function `f` of 4 arguments. Returns a behavior.
+function lift4(f, behaveA, behaveB, behaveC, behaveD) {
+  return (function behaveLift(now) {
+    return f(snapshot(behaveA), snapshot(behaveB), snapshot(behaveC), snapshot(behaveD));
+  });
+}
+
+// Lift a function `f` of 5 arguments. Returns a behavior.
+function lift5(f, behaveA, behaveB, behaveC, behaveD, behaveE) {
+  return (function behaveLift(now) {
+    return f(snapshot(behaveA), snapshot(behaveB), snapshot(behaveC), snapshot(behaveD), snapshot(behaveE));
+  });
+}
+
 // Lift a function of `n` arguments, invoking it with current values of an array
 // of behaviors. Returns a behavior.
 function liftN(f, behaviors) {

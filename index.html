@@ -2,8 +2,8 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Lock</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pinchy-zoomy home</title>
+  <meta name="viewport" content="width=device-width, user-scalable=no">
   <link rel="stylesheet" href="index.css">
 </head>
 <body id="sys-stage" class="sys-stage">
@@ -74,10 +74,13 @@
   <div hidden id="lock" class="sys-screen lock" style="background-image: url(wallpaper01.jpg);">
     
   </div>
+  <script src="wires.js"></script>
+  <script src="n-vector.js"></script>
   <script src="index.js"></script>
   <script>
-    var gridEl = document.getElementById('home-strip');
-    setupDemo(gridEl);
+    // Disable scrolling for demo.
+    document.getElementById('home').style.overflow = 'hidden';
+    setupDemoScale(document.getElementById('home-strip'));
   </script>
 </body>
 </html>
