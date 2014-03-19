@@ -17,11 +17,6 @@
 
 // [{ weight: 200.2, value: 'foo' }]
 
-function translate3d(element, x, y, z) {
-  element.style.transform = 'translate3d(' + x + 'px, ' + y + 'px, ' + z + 'px)';
-  return element;
-}
-
 function each(indexed, step, a, b, c, d) {
   for (var i = 0; i < indexed.length; i++) step(indexed[i], i, a, b, c, d);
   return indexed;
@@ -39,9 +34,8 @@ function calcGridTop(i, cols, h) {
   return Math.floor(i / cols) * h;
 }
 
-function layoutEl(el, w, h, l, t) {
-  el.style.width = w + 'px';
-  translate3d(el, l, t, 0);
+function layoutEl(el, l, t, f) {
+  el.style.transform = 'translate3d(' + l + 'px, ' + t + 'px, 0px) scale(' + f + ')';
   return el;
 }
 
@@ -56,6 +50,13 @@ function tweenGridLayout(gridEl, fromGridW, fromUnitH, fromCols, toGridW, toUnit
   var unitW = tween(fromUnitW, toUnitW, factor);
   var unitH = tween(fromUnitH, toUnitH, factor);
 
+  // Derive scaling factor from current unit width vs largest unit width.
+  var scaleF = unitW / fromUnitW;
+
+  // Unit offset makes up for scale offset.
+  var unitLOffset;
+  var unitTOffset;
+
   // Calc desired static height of grid.
   var gridH = tween(
     calcGridTop(unitEls.length - 1, fromCols, fromUnitH) + fromUnitH,
@@ -65,9 +66,8 @@ function tweenGridLayout(gridEl, fromGridW, fromUnitH, fromCols, toGridW, toUnit
 
   var gridW = tween(fromGridW, toGridW, factor);
 
-  // Set static dimensions for `gridEl`.
-  gridEl.style.width = gridW + 'px';
-  gridEl.style.height = gridH + 'px';  
+  // Set static height for `gridEl`.
+  gridEl.style.height = gridH + 'px';
 
   each(unitEls, function(el, i) {
     var elL = tween(
@@ -82,7 +82,7 @@ function tweenGridLayout(gridEl, fromGridW, fromUnitH, fromCols, toGridW, toUnit
       factor
     );
 
-    layoutEl(el, unitW, unitH, elL, elT);
+    layoutEl(el, elL, elT, scaleF);
   });
 
   return unitEls;
