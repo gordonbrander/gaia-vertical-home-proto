@@ -9,49 +9,9 @@
 // of event are accomplished by wrapping event with another event function,
 // and consuming original event within (CPS).
 
-// A behavior is any function of shape `function (time) { ... }`, where
-// `time` is current time. Behaviors may capture state, return value from time,
-// or be constant. Behaviors must always return a value, but value may
-// change state. A function `snapshot` is provided to call behaviors with
-// current monotonic time. You should always call behaviors with `snapshot`.
-
-// Note: events are "push" data structures and behaviors are "pull"
-// datastructures. This could be rather nice because behaviors are only
-// calculated upon request. Events drive behavior calculation and view updates.
-
-// Goals:
-// * Updates to behaviors are driven by input events
-// * Screen renders are driven by consuming behaviors during animation frame.
-
-// Create monotonic micro timer. If `performance.now` is not supported, `now`
-// will fake it by adding small offsets to `Date.now`.
-function makeNow() {
-  // If window.performance.now is supported, return it wrapped in a function.
-  if ('now' in window.performance) return (function nowMonotonic() {
-    return window.performance.now();
-  });
-
-  // Otherwise, shim it with a timer that is monotonic, but technically
-  // innacurate for milisecond fractions.
-
-  // Note that offset of more than 3 decemal places of accuracy causes issues.
-  // Most likely some precision problem with JS numbers.
-  var offset = 0.001;
-  var beginning = Date.now();
-  var prev = 0;
-
-  // For browsers that do not support true monotonic time create a faked
-  return (function nowFakedMonotonic() {
-    // Peg time start at program start.
-    var curr = Date.now() - beginning;
-    // Add offsets until time is monotonic.
-    while (curr <= prev) curr = curr + offset;
-    // Return time and memoize our offset time as last time returned.
-    return (prev = curr);
-  });
-}
-
-var now = makeNow();
+// A behavior is any zero-argument function that returns a vlaue.
+// Behaviors must always return a value, but value may
+// change over time.
 
 // Get snapshot value of behavior (any function of time) at "now" in program
 // execution time.
@@ -65,7 +25,7 @@ function snapshot(behave) {
   //
   // Note that time passed to `behave` is monotonic and starts at beginning of
   // program execution (not Unix Epoch).
-  return typeof behave === 'function' ? behave(now()) : behave;
+  return typeof behave === 'function' ? behave() : behave;
 }
 
 // Create a behavior function from an event function and an initial value.
@@ -365,6 +325,71 @@ function all(arrayOfBehaviors) {
   });
 }
 
+// Create a behavior containing a series of interpolated "echoes" between
+// [0..1]. Every time an event occurs in `events`, the resulting behavior will
+// be reset to `0`, then ease back to `1` within given `duration`. An easing
+// curve may be defined via `ease` function.
+//
+// Returns a behavior function of values `[0..1]`.
+function interpolate(resetEvents, duration) {
+  // Initialize reset variable. Last time reset is `-Infinity` (never).
+  var reset = -Infinity;
+
+  resetEvents(function nextReset() {
+    // Reset at time of event occurance.
+    reset = now();
+  });
+
+  return (function behaveInterpolated(time) {
+    if (time > (reset + duration)) return 1;
+    if (time < reset) return 0;
+    return (time - reset) / duration;
+  });
+}
+
+// Power-based easing functions for numbers in range [0..1].
+// 
+// Here's how to recreate Robert Penner's famous easing curves:
+// 
+// easeInQuad: `easeIn(factor, 2)`
+// easeOutQuad: `easeOut(factor, 2)`
+// easeInOutQuad: `easeInOut(factor, 2)`
+// Cubic: 3
+// Quart: 4
+// Quint: 5
+// 
+// Tip: use these functions with `lift2()` to ease behaviors created
+// with `interpolate()`. For example, here's a 2000ms behavior eased w/ Quart:
+//
+//     var y = interpolate(x, 2000);
+//     var z = lift2(easeIn, y, 4);
+
+// easeIn is just a nice pseudonym for `Math.pow`.
+var easeIn = Math.pow;
+
+// easeOut is an inverse power.
+function easeOut(factor, power) {
+  return 1 - Math.pow(1 - factor, power);  
+}
+
+// easeInOut creates a bell curve.
+function easeInOut(factor, power) {
+  return factor < 0.5 ?
+    Math.pow(factor * 2, power) / 2 :
+    1 - (Math.pow((1 - factor) * 2, power) / 2);
+}
+
+
+// Scale range `from` - `to`, via `factor`.
+function tween(scale, min, max) {
+  return min + ((max - min) * scale);
+}
+
+// Calculate scaling factor from current, min and max values.
+function toScale(curr, min, max) {
+  return (curr - min) / (max - min);
+}
+
 // Event and behavior sources
 // -----------------------------------------------------------------------------
 
@@ -451,108 +476,3 @@ function animationFrames() {
     });
   });
 }
-
-// Determine if mouse is currently being pressed on element.
-// Returns a behavior.
-function pressed(element) {
-  return switcher(on(element, 'mousedown'), on(element, 'mouseup'), false);
-}
-
-function toCoordsFromEvent(box, event) {
-  box[0] = event.clientX;
-  box[1] = event.clientY;
-  return box;
-}
-
-var slice = Array.slice;
-
-function coords(element) {
-  var moveEvents = on(element, 'mousemove');
-  // Reuse coords array at every reduction.
-  var mouseCoords = foldp(moveEvents, toCoordsFromEvent, [0, 0]);
-  // Upon behavior evaluation, slice result of behavior.
-  return lift(slice, stepper(mouseCoords, [0, 0]));
-}
-
-function getChangedTouches(event) {
-  return event.changedTouches;
-}
-
-// Returns an array behavior function of touches currently on the screen.
-function touches(element) {
-  var start = on(element, 'touchstart');
-  var move = on(element, 'touchmove');
-  return stepper(map(merge([start, move]), getChangedTouches), []);
-}
-
-// Create a behavior containing a series of interpolated "echoes" between
-// [0..1]. Every time an event occurs in `events`, the resulting behavior will
-// be reset to `0`, then ease back to `1` within given `duration`. An easing
-// curve may be defined via `ease` function.
-// 
-// Returns a behavior function of values `[0..1]`.
-function interpolate(resetEvents, duration) {
-  // Initialize reset variable. Last time reset is `-Infinity` (never).
-  var reset = -Infinity;
-
-  resetEvents(function nextReset() {
-    // Reset at time of event occurance.
-    reset = now();
-  });
-
-  return (function behaveInterpolated(time) {
-    if (time > (reset + duration)) return 1;
-    if (time < reset) return 0;
-    return (time - reset) / duration;
-  });
-}
-
-// Power-based easing functions for numbers in range [0..1].
-// 
-// Here's how to recreate Robert Penner's famous easing curves:
-// 
-// easeInQuad: `easeIn(factor, 2)`
-// easeOutQuad: `easeOut(factor, 2)`
-// easeInOutQuad: `easeInOut(factor, 2)`
-// Cubic: 3
-// Quart: 4
-// Quint: 5
-// 
-// Tip: use these functions with `lift2()` to ease behaviors created
-// with `interpolate()`. For example, here's a 2000ms behavior eased w/ Quart:
-//
-//     var y = interpolate(x, 2000);
-//     var z = lift2(easeIn, y, 4);
-
-// easeIn is just a pseudonym for power.
-var easeIn = Math.pow;
-
-// easeOut is an inverse power.
-function easeOut(factor, power) {
-  return 1 - Math.pow(1 - factor, power);  
-}
-
-// easeInOut creates a bell curve.
-function easeInOut(factor, power) {
-  return factor < 0.5 ?
-    Math.pow(factor * 2, power) / 2 :
-    1 - (Math.pow((1 - factor) * 2, power) / 2);
-}
-
-
-// Scale range `from` - `to`, via `factor`.
-function tween(factor, from, to) {
-  return from + ((to - from) * factor);
-}
-
-// "Slices" a range of `factor` given by `from` - `to` and returns a number
-// `[0..1]` representing how far through that range we've progressed.
-function segment(factor, from, to) {
-  if (factor < from) return 0;
-  if (factor > to) return 1;
-  return (factor - from) / (to - from);
-}
-
-// @TODO like interpolate, but eases in and out. Maybe we can unify this into one
-// function that takes an easeIn, easeOut function?
-// function charge(events, timeframe) {}
