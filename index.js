@@ -22,8 +22,25 @@ function each(indexed, step, a, b, c, d) {
   return indexed;
 }
 
-function tween(from, to, factor) {
-  return from + ((to - from) * factor);
+function tween(scale, min, max) {
+  return min + ((max - min) * scale);
+}
+
+// Calculate scaling factor from current, min and max values.
+function toScale(curr, min, max) {
+  return (curr - min) / (max - min);
+}
+
+function constrain(n, min, max) {
+  return Math.max(Math.min(n, max), min);
+}
+
+function invertScale(scale) {
+  return 1 - scale;
+}
+
+function mult(x, y) {
+  return x * y;
 }
 
 function calcGridLeft(i, cols, w) {
@@ -47,8 +64,8 @@ function tweenGridLayout(gridEl, fromGridW, fromUnitH, fromCols, toGridW, toUnit
   var fromUnitW = (fromGridW / fromCols);
   var toUnitW = (toGridW / toCols);
 
-  var unitW = tween(fromUnitW, toUnitW, factor);
-  var unitH = tween(fromUnitH, toUnitH, factor);
+  var unitW = tween(factor, fromUnitW, toUnitW);
+  var unitH = tween(factor, fromUnitH, toUnitH);
 
   // Derive scaling factor from current unit width vs largest unit width.
   var scaleF = unitW / fromUnitW;
@@ -59,27 +76,27 @@ function tweenGridLayout(gridEl, fromGridW, fromUnitH, fromCols, toGridW, toUnit
 
   // Calc desired static height of grid.
   var gridH = tween(
+    factor,
     calcGridTop(unitEls.length - 1, fromCols, fromUnitH) + fromUnitH,
-    calcGridTop(unitEls.length - 1, toCols, toUnitH) + toUnitH,
-    factor
+    calcGridTop(unitEls.length - 1, toCols, toUnitH) + toUnitH
   );
 
-  var gridW = tween(fromGridW, toGridW, factor);
+  var gridW = tween(factor, fromGridW, toGridW);
 
   // Set static height for `gridEl`.
   gridEl.style.height = gridH + 'px';
 
   each(unitEls, function(el, i) {
     var elL = tween(
+      factor,
       calcGridLeft(i, fromCols, fromUnitW),
-      calcGridLeft(i, toCols, toUnitW),
-      factor
+      calcGridLeft(i, toCols, toUnitW)
     );
 
     var elT = tween(
+      factor,
       calcGridTop(i, fromCols, fromUnitH),
-      calcGridTop(i, toCols, toUnitH),
-      factor
+      calcGridTop(i, toCols, toUnitH)
     );
 
     layoutEl(el, elL, elT, scaleF);
@@ -94,86 +111,39 @@ function gridLayoutTweener(gridEl, fromGridW, fromUnitH, fromCols, toGridW, toUn
   });
 }
 
-function isEvent2Finger(event) {
-  return event.touches.length === 2;
+// Map a custom "transform" event from GestureDetector to absolute scale factor.
+function event2AbsoluteScale(event) {
+  return event.detail.absolute.scale;
 }
 
-function event2Touch0Coords(event) {
-  return [event.touches[0].screenX, event.changedTouches[0].screenY];
-}
+// This is our pinching sensitivity range. Making the distance between 0 and 1
+// smaller will make the pinch more sensitive. Pass this to `setupPinchScale`
+// on invocation.
+var DEFAULT_PINCH_RANGE = [0.6, 1.4];
 
-function event2Touch1Coords(event) {
-  return [event.touches[1].screenX, event.changedTouches[1].screenY];
-}
+// `gridEl` is the element who's children should be layed out.
+// 
+// `pinchRange` is a 2-array containing the pinch scale range within which
+// scaling occurs.
+function setupPinchScale(gridEl, pinchRange) {
+  // Turn on GestureDetector for `gridEl`. Fires custom "transform"
+  // (pinch/scale) gestures.
+  (new GestureDetector(gridEl)).startDetecting();
 
-function bound(n, min, max) {
-  return Math.max(Math.min(n, max), 0);
-}
-
-function calcFactorFromPinchCoords(maxDist, start0Coord, move0Coord, start1Coord, move1Coord) {
-  // All I care about is euclidian distance from origin.  
-  // The distance is considered the sum total distance of the pinch/zoom.
-  var dist0 = distV(start0Coord, move0Coord);
-  var dist1 = distV(start1Coord, move1Coord);
-  return bound((dist0 + dist1) / maxDist, 0, 1);
-}
-
-// Will need to calculate euclidian distance covered from start position for
-// each finger. Then we map that distance to a distance range of probably around
-// 100px...
-function setupPinchScale(gridEl) {
-  var touchstarts = on(gridEl, 'touchstart');
-  var touchmoves = on(gridEl, 'touchmove');
+  // Capture custom "transform" events from GestureDetector.
+  var transforms = on(gridEl, 'transform');
   var frames = animationFrames();
 
-  var touchstarts2Finger = hub(filter(touchstarts, isEvent2Finger));
-  var touchmoves2Finger = hub(filter(touchmoves, isEvent2Finger));
-
-  var start0Coord = stepper(map(touchstarts2Finger, event2Touch0Coords), [0, 0]);
-  var start1Coord = stepper(map(touchstarts2Finger, event2Touch1Coords), [0, 0]);
-
-  var move0Coord = stepper(map(touchmoves2Finger, event2Touch0Coords), [0, 0]);
-  var move1Coord = stepper(map(touchmoves2Finger, event2Touch1Coords), [0, 0]);
-
-  var factor = lift5(
-    calcFactorFromPinchCoords,
-    200,
-    start0Coord,
-    move0Coord,
-    start1Coord,
-    move1Coord
-  );
+  var absScales = map(transforms, event2AbsoluteScale);
+  var absScale = stepper(absScales, pinchRange[1]);
+  var constrainedScale = lift3(constrain, absScale, pinchRange[0], pinchRange[1]);
+  // Calculate factor representing distance traveled between min and max.
+  var distFactor = lift3(toScale, constrainedScale, pinchRange[0], pinchRange[1]);
+  var invDistFactor = lift(invertScale, distFactor);
 
   var tweenGrid = gridLayoutTweener(gridEl, 300, 120, 3, 300, 110, 4);
 
-  var render = check(factor, frames);
-
-  render(tweenGrid);
-}
-
-function calcFactorFromDragCoords(maxDist, start0Coord, move0Coord) {
-  var dist = start0Coord[1] - move0Coord[1];
-  return bound(dist / maxDist, 0, 1);
-}
-
-function setupDemoScale(gridEl) {
-  var touchstarts = on(gridEl, 'touchstart');
-  var touchmoves = on(gridEl, 'touchmove');
-  var frames = animationFrames();
-
-  var start0Coord = stepper(map(touchstarts, event2Touch0Coords), [0, 0]);
-  var move0Coord = stepper(map(touchmoves, event2Touch0Coords), [0, 0]);
-
-  var factor = lift5(
-    calcFactorFromDragCoords,
-    200,
-    start0Coord,
-    move0Coord
-  );
-
-  var tweenGrid = gridLayoutTweener(gridEl, 300, 120, 3, 300, 110, 4);
-
-  var render = check(factor, frames);
+  var render = check(invDistFactor, frames);
 
   render(tweenGrid);
 }

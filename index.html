@@ -61,11 +61,12 @@
   </div>
   <script src="wires.js"></script>
   <script src="n-vector.js"></script>
+  <script src="gesture_detector.js"></script>
   <script src="index.js"></script>
   <script>
     // Disable scrolling for demo.
     document.getElementById('home').style.overflow = 'hidden';
-    setupDemoScale(document.getElementById('home-strip'));
+    setupPinchScale(document.getElementById('home-strip'), DEFAULT_PINCH_RANGE);
   </script>
 </body>
 </html>
