@@ -81,8 +81,6 @@ function tweenGridLayout(gridEl, fromGridW, fromUnitH, fromCols, toGridW, toUnit
     calcGridTop(unitEls.length - 1, toCols, toUnitH) + toUnitH
   );
 
-  var gridW = tween(factor, fromGridW, toGridW);
-
   // Set static height for `gridEl`.
   gridEl.style.height = gridH + 'px';
 
@@ -116,34 +114,40 @@ function event2AbsoluteScale(event) {
   return event.detail.absolute.scale;
 }
 
-// This is our pinching sensitivity range. Making the distance between 0 and 1
-// smaller will make the pinch more sensitive. Pass this to `setupPinchScale`
-// on invocation.
-var DEFAULT_PINCH_RANGE = [0.6, 1.4];
+function isPastThreshold(curr, min, max, threshold) {
+  return curr > (max - min) * threshold;
+}
 
 // `gridEl` is the element who's children should be layed out.
 // 
 // `pinchRange` is a 2-array containing the pinch scale range within which
 // scaling occurs.
-function setupPinchScale(gridEl, pinchRange) {
+function setupPinchScale(gridEl) {
   // Turn on GestureDetector for `gridEl`. Fires custom "transform"
   // (pinch/scale) gestures.
   (new GestureDetector(gridEl)).startDetecting();
+
+  // This is our pinching sensitivity range. Making the distance between 0 and 1
+  // smaller will make the pinch more sensitive. Pass this to `setupPinchScale`
+  // on invocation.
+  var pinchMin = 0.4;
+  var pinchMax = 1;
 
   // Capture custom "transform" events from GestureDetector.
   var transforms = on(gridEl, 'transform');
   var frames = animationFrames();
 
   var absScales = map(transforms, event2AbsoluteScale);
-  var absScale = stepper(absScales, pinchRange[1]);
-  var constrainedScale = lift3(constrain, absScale, pinchRange[0], pinchRange[1]);
+  var absScale = stepper(absScales, pinchMax);
+  var constrainedScale = lift3(constrain, absScale, pinchMin, pinchMax);
+
   // Calculate factor representing distance traveled between min and max.
-  var distFactor = lift3(toScale, constrainedScale, pinchRange[0], pinchRange[1]);
-  var invDistFactor = lift(invertScale, distFactor);
+  var adjustedInverseScale = lift3(toScale, constrainedScale, pinchMin, pinchMax);
+  // 0..1
+  var scale = lift(invertScale, adjustedInverseScale);
 
   var tweenGrid = gridLayoutTweener(gridEl, 300, 120, 3, 300, 110, 4);
 
-  var render = check(invDistFactor, frames);
-
+  var render = check(scale, frames);
   render(tweenGrid);
 }
