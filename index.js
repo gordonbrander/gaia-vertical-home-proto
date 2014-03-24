@@ -127,7 +127,6 @@ function setupPinchScale(gridEl) {
 
   // Capture custom "transform" events from GestureDetector.
   var transforms = on(gridEl, 'transform');
-  var frames = animationFrames();
 
   var absScales = map(transforms, event2AbsoluteScale);
   var absScale = stepper(absScales, pinchMax);
@@ -140,6 +139,6 @@ function setupPinchScale(gridEl) {
 
   var tweenGrid = gridLayoutTweener(gridEl, 300, 120, 3, 300, 110, 4);
 
-  var render = check(scale, frames);
+  var render = check(scale, animationFrames);
   render(tweenGrid);
 }
