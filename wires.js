@@ -1,9 +1,5 @@
 // Minimal FRP Behaviors and Events.
 
-// Prior art
-// http://library.elm-lang.org/catalog/evancz-Elm/0.11/Signal
-// http://www.seadowg.com/echo/
-
 // An event function is any function of shape `function (next) { ... }` where
 // `next(value)` is a callback to be called by event function. Transformations
 // of event are accomplished by wrapping event with another event function,
@@ -13,24 +9,17 @@
 // Behaviors must always return a value, but value may
 // change over time.
 
-// Get snapshot value of behavior (any function of time) at "now" in program
+// Get snapshot value of behavior (any 0-arity function) at "now" in program
 // execution time.
-// 
-// Behaviors are any "function of time" -- e.g. a function that takes a time
-// and returns a value. Note that behavior may ignore time given.
-// Behaviors are useful for storing and retrieving state.
 function snapshot(behave) {
-  // If behavior is a function, invoke it with current time and return value.
+  // If behavior is a function, invoke it and return value.
   // All other values are treated as constant behaviors. Return them as-is.
-  //
-  // Note that time passed to `behave` is monotonic and starts at beginning of
-  // program execution (not Unix Epoch).
   return typeof behave === 'function' ? behave() : behave;
 }
 
-// Create a behavior function from an event function and an initial value.
-// Returns a behavior who's value changes with event.
-// (events, initial) => behavior
+// Create a behavior function from an events function and an initial value.
+// Returns a behavior who's value changes whenever event occurs.
+// events, initial -> behavior
 function stepper(events, initial) {
   var valueAtLastStep = initial;
 
@@ -139,6 +128,7 @@ function id(thing) {
 // Sample value of `behave` every time an event happens in `events`.
 // An optional `assemble` function allows you to generate value from behavior
 // value and event value. Returns new event function.
+// behavior, event, assemble -> event
 function sample(behave, events, assemble) {
   assemble = assemble || id;
   return (function eventsSampled(next) {
@@ -149,29 +139,25 @@ function sample(behave, events, assemble) {
   });
 }
 
-// Assert against past value.
-// Returns a new event containing all values for which `assert(a, b)`
-// returns true.
-function assertp(events, assert) {
-  return (function eventsAssertp(next) {
-    var prev = null;
-    events(function nextAssertp(value) {
-      // Note that first call to assert will always have a null left.
-      if (assert(prev, value)) next(value);
-      prev = value;
-    });
-  });
+// Check if something is nullish.
+// Returns boolean.
+function isNothing(thing) {
+  return thing == null;
 }
 
-function assertDifferent(a, b) {
-  return a !== b;
+function maybeDifferent(a, b) {
+  return a !== b ? b : null;
+}
+
+function rejectRepeats(events) {
+  return reject(foldp(events, maybeDifferent, null), isNothing);
 }
 
 // Check for changes in `behave` whenever an event occurs in `events`.
 // Returns an events function that will trigger `next` every time value of
 // `behave` has changed since last event in `trigger`.
 function check(behave, events) {
-  return assertp(sample(behave, events), assertDifferent);
+  return rejectRepeats(sample(behave, events));
 }
 
 // Delay an event by one event, essentially shifting events "forward".
@@ -299,11 +285,11 @@ function timer(resetEvents) {
   var begin = 0;
 
   resetEvents(function nextReset() {
-    begin = now();
+    begin = Date.now();
   });
 
-  return (function behaveTimer(time) {
-    return time - begin;
+  return (function behaveTimer() {
+    return Date.now() - begin;
   });
 }
 
@@ -313,7 +299,7 @@ function throttle(events, ms) {
   return (function eventsThrottled(next) {
     var last = -Infinity;
     events(function nextThrottle(value) {
-      if ((now() - last) < ms) next(value);
+      if ((Date.now() - last) < ms) next(value);
     });
   });
 }
@@ -329,7 +315,7 @@ function all(arrayOfBehaviors) {
 // [0..1]. Every time an event occurs in `events`, the resulting behavior will
 // be reset to `0`, then ease back to `1` within given `duration`. An easing
 // curve may be defined via `ease` function.
-//
+// 
 // Returns a behavior function of values `[0..1]`.
 function interpolate(resetEvents, duration) {
   // Initialize reset variable. Last time reset is `-Infinity` (never).
@@ -337,10 +323,11 @@ function interpolate(resetEvents, duration) {
 
   resetEvents(function nextReset() {
     // Reset at time of event occurance.
-    reset = now();
+    reset = Date.now();
   });
 
-  return (function behaveInterpolated(time) {
+  return (function behaveInterpolated() {
+    var time = Date.now();
     if (time > (reset + duration)) return 1;
     if (time < reset) return 0;
     return (time - reset) / duration;
@@ -349,7 +336,7 @@ function interpolate(resetEvents, duration) {
 
 // Power-based easing functions for numbers in range [0..1].
 // 
-// Here's how to recreate Robert Penner's famous easing curves:
+// Here's how to recreate Robert Penner's easing curves:
 // 
 // easeInQuad: `easeIn(factor, 2)`
 // easeOutQuad: `easeOut(factor, 2)`
@@ -393,38 +380,15 @@ function toScale(curr, min, max) {
 // Event and behavior sources
 // -----------------------------------------------------------------------------
 
-// I don't have to support multiple consumers at every step. Instead, support
-// them at source when needed.
-// 
-// Note that with behaviors, you don't have to worry about missing events as
-// much because behaviors always have values. There may have been events before
-// you began listening, but you don't know and don't care (which is the
-// reality anyway -- the world didn't begin at program start).
-
-// Split an event into multiple "virtual" events. Returns an event function that
-// may be called by `n` consumers before actual event is kicked off.
-function split(events, n) {
-  var nexts = [];
-
-  function nextSplit(value) {
-    return nexts.reduce(callWith, value);
-  }
-
-  return (function eventsSplit(next) {
-    // Throw error if all demuxed sources have already been used.
-    if (nexts.length === n) throw Error('No more demuxed sources available');
-    nexts.push(next);
-    // If we have pushed in the requested number of consumers, start
-    // accumulation of source.
-    if (nexts.length === n) events(nextSplit);
-  });
-}
-
 // Hub a source event so it is only consumed once. Occurances of original event
 // will be dispatched to every callback.
 // 
 // Note that callbacks added after event consumption starts will miss
 // earlier events.
+//
+// You can use this for events that get consumed a number of times. It can save
+// a bit of overhead since closures down the chain from hub will only be
+// created once.
 function hub(events) {
   var nexts = [];
   var isStarted = false;
@@ -463,16 +427,15 @@ var requestAnimationFrame = (
   window.msRequestAnimationFrame
 );
 
-// Create an events function containing occurances of animation frames.
+// An events function containing occurances of animation frames.
 // Useful for sheduling writes to DOM using something like `changes`.
-function animationFrames() {
-  // Hub event to share frame callback between many consumers.
-  return (function eventsOnFrame(next) {
-    // Kick off animation frame loop.
-    requestAnimationFrame(function nextFrame(time) {
-      // Call `next()` with time.
-      next(time);
-      requestAnimationFrame(nextFrame);
-    });
+// Because this is an event function you can pass it directly to `map`,
+// `filter`, et al.
+function animationFrames(next) {
+  // Kick off animation frame loop.
+  requestAnimationFrame(function nextFrame(time) {
+    // Call `next()` with time.
+    next(time);
+    requestAnimationFrame(nextFrame);
   });
 }
