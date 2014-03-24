@@ -39,10 +39,6 @@ function invertScale(scale) {
   return 1 - scale;
 }
 
-function mult(x, y) {
-  return x * y;
-}
-
 function calcGridLeft(i, cols, w) {
   return (i % cols) * w;
 }
@@ -112,10 +108,6 @@ function gridLayoutTweener(gridEl, fromGridW, fromUnitH, fromCols, toGridW, toUn
 // Map a custom "transform" event from GestureDetector to absolute scale factor.
 function event2AbsoluteScale(event) {
   return event.detail.absolute.scale;
-}
-
-function isPastThreshold(curr, min, max, threshold) {
-  return curr > (max - min) * threshold;
 }
 
 // `gridEl` is the element who's children should be layed out.
